@@ -12,53 +12,21 @@ def run_query(query):
     except Exception as e:
         return pd.DataFrame({"Error Running Query": [str(e)]})
 
-# Helper function to auto-detect matching column names dynamically
-def find_best_column(table_name, keywords, fallback_index=0):
+def execute_db_command(cmd, params=()):
     try:
         with sqlite3.connect(DB_FILE) as conn:
-            df = pd.read_sql_query(f"SELECT * FROM {table_name} LIMIT 1", conn)
-            cols = list(df.columns)
-            # Search for keyword matches in column names
-            for kw in keywords:
-                for col in cols:
-                    if kw.lower() in col.lower():
-                        return col
-            # Fallback to positional column if no matching keyword string is found
-            if fallback_index < len(cols):
-                return cols[fallback_index]
-            return cols[0]
-    except:
-        return f"c{fallback_index + 1}"
+            cursor = conn.cursor()
+            cursor.execute(cmd, params)
+            conn.commit()
+    except Exception as e:
+        st.error(f"Database Error: {e}")
 
 st.title("🌱 Local Food Wastage Management System")
 st.markdown("### Connecting surplus food providers with local individuals and NGOs to reduce waste.")
 st.write("---")
 
-menu = st.sidebar.radio("Navigation Menu", ["📊 Live Dashboard & Filters", "🔍 15 Business SQL Queries"])
-
-# --- Auto-detecting your real database column structure safely ---
-prov_city = find_best_column("providers_data", ["city", "location", "c5"], 4)
-prov_type = find_best_column("providers_data", ["type", "c3"], 2)
-prov_id = find_best_column("providers_data", ["id", "c1"], 0)
-prov_name = find_best_column("providers_data", ["name", "c2"], 1)
-
-recv_city = find_best_column("receivers_data", ["city", "location", "c4"], 3)
-recv_type = find_best_column("receivers_data", ["type", "c3"], 2)
-recv_id = find_best_column("receivers_data", ["id", "c1"], 0)
-recv_name = find_best_column("receivers_data", ["name", "c2"], 1)
-
-food_qty = find_best_column("food_listings_data", ["qty", "quantity", "c3"], 2)
-food_item = find_best_column("food_listings_data", ["item", "name", "food", "c2"], 1)
-food_prov_fk = find_best_column("food_listings_data", ["prov", "c5"], 4)
-food_loc = find_best_column("food_listings_data", ["loc", "city", "c7"], 6)
-food_meal = find_best_column("food_listings_data", ["meal", "c9"], 8)
-food_id = find_best_column("food_listings_data", ["id", "c1"], 0)
-food_type = find_best_column("food_listings_data", ["type", "c8"], 7)
-
-claim_status = find_best_column("claims_data", ["status", "state", "c4"], 3)
-claim_id = find_best_column("claims_data", ["id", "c1"], 0)
-claim_food_fk = find_best_column("claims_data", ["food", "c2"], 1)
-claim_recv_fk = find_best_column("claims_data", ["recv", "user", "c3"], 2)
+# The full 3-tab layout is now perfectly active
+menu = st.sidebar.radio("Navigation Menu", ["📊 Live Dashboard & Filters", "⚡ CRUD Operations", "🔍 15 Business SQL Queries"])
 
 # ====================================================================
 # TAB 1: LIVE DASHBOARD
@@ -66,8 +34,8 @@ claim_recv_fk = find_best_column("claims_data", ["recv", "user", "c3"], 2)
 if menu == "📊 Live Dashboard & Filters":
     st.header("🛒 Current Available Food Listings")
     
-    cities_df = run_query(f"SELECT DISTINCT [{food_loc}] FROM food_listings_data WHERE [{food_loc}] IS NOT NULL")
-    food_types_df = run_query(f"SELECT DISTINCT [{food_type}] FROM food_listings_data WHERE [{food_type}] IS NOT NULL")
+    cities_df = run_query("SELECT DISTINCT [Location] FROM food_listings_data WHERE [Location] IS NOT NULL")
+    food_types_df = run_query("SELECT DISTINCT [Food_Type] FROM food_listings_data WHERE [Food_Type] IS NOT NULL")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -78,10 +46,10 @@ if menu == "📊 Live Dashboard & Filters":
     base_query = "SELECT * FROM food_listings_data WHERE 1=1"
     params = []
     if selected_city != "All Cities":
-        base_query += f" AND [{food_loc}] = ?"
+        base_query += " AND [Location] = ?"
         params.append(selected_city)
     if selected_type != "All Types":
-        base_query += f" AND [{food_type}] = ?"
+        base_query += " AND [Food_Type] = ?"
         params.append(selected_type)
         
     if not params:
@@ -92,99 +60,138 @@ if menu == "📊 Live Dashboard & Filters":
     st.dataframe(final_listings, use_container_width=True)
 
 # ====================================================================
-# TAB 2: 15 BUSINESS SQL QUERIES
+# TAB 2: CRUD OPERATIONS
+# ====================================================================
+elif menu == "⚡ CRUD Operations":
+    st.header("🛠️ Database Records Management")
+    crud_action = st.selectbox("Select Action:", ["Create (Add New Food Listing)", "Update (Modify Claim Status)", "Delete (Remove Expired Listing)"])
+    
+    if crud_action == "Create (Add New Food Listing)":
+        st.subheader("➕ Add New Surplus Food Item")
+        f_id = st.text_input("Food ID (Unique Number)", value="2001")
+        name = st.text_input("Food Name", value="Surplus Rice Bowl")
+        qty = st.text_input("Quantity Available", value="15")
+        expiry = st.text_input("Expiry Date (YYYY-MM-DD)", value="2026-07-01")
+        prov_id = st.text_input("Provider ID Reference", value="1")
+        loc_city = st.text_input("Location City", value="Pune")
+        
+        if st.button("Insert Record to DB"):
+            execute_db_command(
+                "INSERT INTO food_listings_data (Food_ID, Food_Name, Quantity, Expiry_Date, Provider_ID, Location) VALUES (?, ?, ?, ?, ?, ?)",
+                (f_id, name, qty, expiry, prov_id, loc_city)
+            )
+            st.success(f"🎉 Successfully inserted '{name}' into the database!")
+                
+    elif crud_action == "Update (Modify Claim Status)":
+        st.subheader("🔄 Update Active Claim Status")
+        c_id = st.text_input("Enter Claim ID to Update", value="1")
+        new_status = st.selectbox("Set New Status to:", ["Accepted", "Pending", "Completed", "Cancelled"])
+        if st.button("Update Status"):
+            execute_db_command("UPDATE claims_data SET Status = ? WHERE Claim_ID = ?", (new_status, c_id))
+            st.success(f"✅ Claim ID {c_id} updated successfully!")
+                
+    elif crud_action == "Delete (Remove Expired Listing)":
+        st.subheader("🗑️ Purge Expired Records from System")
+        del_id = st.text_input("Enter Food ID to Remove:", value="")
+        if st.button("Permanently Delete"):
+            if del_id:
+                execute_db_command("DELETE FROM food_listings_data WHERE Food_ID = ?", (del_id,))
+                st.warning(f"❌ Food Record ID {del_id} has been removed.")
+
+# ====================================================================
+# TAB 3: 15 BUSINESS SQL QUERIES (PERFECT DATA MAPPING)
 # ====================================================================
 elif menu == "🔍 15 Business SQL Queries":
     st.header("📊 Analytical Business Insights & Trends")
     
     queries = {
-        "Query 1: Number of providers and receivers in each city": f"""
-            SELECT [{prov_city}] AS City, 'Provider' AS Entity_Type, COUNT(*) AS Total_Count FROM providers_data GROUP BY [{prov_city}]
+        "Query 1: Number of providers and receivers in each city": """
+            SELECT City, 'Provider' AS Entity_Type, COUNT(*) AS Total_Count FROM providers_data GROUP BY City
             UNION ALL
-            SELECT [{recv_city}] AS City, 'Receiver' AS Entity_Type, COUNT(*) AS Total_Count FROM receivers_data GROUP BY [{recv_city}];
+            SELECT City, 'Receiver' AS Entity_Type, COUNT(*) AS Total_Count FROM receivers_data GROUP BY City;
         """,
-        "Query 2: Which type of provider contributes the most food?": f"""
-            SELECT p.[{prov_type}] AS Provider_Type, SUM(CAST(f.[{food_qty}] AS INTEGER)) AS Total_Food_Contributed
+        "Query 2: Which type of provider contributes the most food?": """
+            SELECT p.Type AS Provider_Type, SUM(CAST(f.Quantity AS INTEGER)) AS Total_Food_Contributed
             FROM providers_data p
-            JOIN food_listings_data f ON p.[{prov_id}] = f.[{food_prov_fk}]
-            GROUP BY p.[{prov_type}];
+            JOIN food_listings_data f ON p.Provider_ID = f.Provider_ID
+            GROUP BY p.Type;
         """,
-        "Query 3: Most commonly listed food items": f"""
-            SELECT [{food_item}] AS Food_Item, SUM(CAST([{food_qty}] AS INTEGER)) AS Total_Quantity
+        "Query 3: Most commonly listed food items": """
+            SELECT Food_Name, SUM(CAST(Quantity AS INTEGER)) AS Total_Quantity
             FROM food_listings_data
-            GROUP BY [{food_item}]
+            GROUP BY Food_Name
             ORDER BY Total_Quantity DESC;
         """,
-        "Query 4: Status of claims (Accepted, Pending, Rejected)": f"""
-            SELECT [{claim_status}] AS Claim_Status, COUNT(*) AS Total_Claims
+        "Query 4: Status of claims (Accepted, Pending, Rejected)": """
+            SELECT Status AS Claim_Status, COUNT(*) AS Total_Claims
             FROM claims_data
-            GROUP BY [{claim_status}];
+            GROUP BY Status;
         """,
-        "Query 5: Top 3 cities with the highest food provider activity": f"""
-            SELECT [{prov_city}] AS City, COUNT(*) AS Active_Providers
+        "Query 5: Top 3 cities with the highest food provider activity": """
+            SELECT City, COUNT(*) AS Active_Providers
             FROM providers_data
-            GROUP BY [{prov_city}]
+            GROUP BY City
             ORDER BY Active_Providers DESC
             LIMIT 3;
         """,
-        "Query 6: Total quantity of food available across the entire system": f"""
-            SELECT SUM(CAST([{food_qty}] AS INTEGER)) AS Total_Global_Food_Quantity 
+        "Query 6: Total quantity of food available across the entire system": """
+            SELECT SUM(CAST(Quantity AS INTEGER)) AS Total_Global_Food_Quantity 
             FROM food_listings_data;
         """,
-        "Query 7: Average quantity per food listing grouped by Meal Type (Veg/Non-Veg)": f"""
-            SELECT [{food_meal}] AS Meal_Type, AVG(CAST([{food_qty}] AS INTEGER)) AS Avg_Quantity_Per_Listing
+        "Query 7: Average quantity per food listing grouped by Meal Type (Veg/Non-Veg)": """
+            SELECT Meal_Type, AVG(CAST(Quantity AS INTEGER)) AS Avg_Quantity_Per_Listing
             FROM food_listings_data
-            GROUP BY [{food_meal}];
+            GROUP BY Meal_Type;
         """,
-        "Query 8: List food items with a decent quantity (greater than 10 units)": f"""
-            SELECT [{food_item}] AS Food_Name, [{food_qty}] AS Quantity, [{food_loc}] AS Location
+        "Query 8: List food items with a decent quantity (greater than 10 units)": """
+            SELECT Food_Name, Quantity, Location
             FROM food_listings_data
-            WHERE CAST([{food_qty}] AS INTEGER) > 10;
+            WHERE CAST(Quantity AS INTEGER) > 10;
         """,
-        "Query 9: Count of receivers based on their type (NGO, Shelter, Individual)": f"""
-            SELECT [{recv_type}] AS Receiver_Type, COUNT(*) AS Total_Receivers
+        "Query 9: Count of receivers based on their type (NGO, Shelter, Individual)": """
+            SELECT Type AS Receiver_Type, COUNT(*) AS Total_Receivers
             FROM receivers_data
-            GROUP BY [{recv_type}];
+            GROUP BY Type;
         """,
-        "Query 10: Find providers in your cities (Broad match case-insensitive)": f"""
-            SELECT [{prov_name}] AS Provider_Name, [{prov_type}] AS Provider_Type, [{prov_city}] AS City 
+        "Query 10: Find providers in your cities (Broad match case-insensitive)": """
+            SELECT Name AS Provider_Name, Type AS Provider_Type, City 
             FROM providers_data 
-            WHERE LOWER([{prov_city}]) LIKE '%pune%' 
-               OR LOWER([{prov_city}]) LIKE '%nagpur%'
-               OR [{prov_city}] IS NOT NULL;
+            WHERE LOWER(City) LIKE '%pune%' 
+               OR LOWER(City) LIKE '%nagpur%'
+               OR City IS NOT NULL;
         """,
-        "Query 11: Find providers that have never listed any food items yet (Left Join)": f"""
-            SELECT p.[{prov_name}] AS Inactive_Provider, p.[{prov_city}] AS City
+        "Query 11: Find providers that have never listed any food items yet (Left Join)": """
+            SELECT p.Name AS Inactive_Provider, p.City
             FROM providers_data p
-            LEFT JOIN food_listings_data f ON p.[{prov_id}] = f.[{food_prov_fk}]
-            WHERE f.[{food_id}] IS NULL;
+            LEFT JOIN food_listings_data f ON p.Provider_ID = f.Provider_ID
+            WHERE f.Food_ID IS NULL;
         """,
-        "Query 12: List details of all claims that aren't blank": f"""
-            SELECT cl.[{claim_id}] AS Claim_ID, f.[{food_item}] AS Claimed_Food, cl.[{claim_status}] AS Status
+        "Query 12: List details of all claims that aren't blank": """
+            SELECT cl.Claim_ID, f.Food_Name AS Claimed_Food, cl.Status
             FROM claims_data cl
-            JOIN food_listings_data f ON cl.[{claim_food_fk}] = f.[{food_id}]
-            WHERE cl.[{claim_status}] IS NOT NULL AND cl.[{claim_status}] != ''
-            ORDER BY cl.[{claim_status}];
+            JOIN food_listings_data f ON cl.Food_ID = f.Food_ID
+            WHERE cl.Status IS NOT NULL AND cl.Status != ''
+            ORDER BY cl.Status;
         """,
-        "Query 13: Track which receiver has made the most total claims": f"""
-            SELECT r.[{recv_name}] AS Receiver_Name, COUNT(cl.[{claim_id}]) AS Total_Claims_Made
+        "Query 13: Track which receiver has made the most total claims": """
+            SELECT r.Name AS Receiver_Name, COUNT(cl.Claim_ID) AS Total_Claims_Made
             FROM receivers_data r
-            JOIN claims_data cl ON r.[{recv_id}] = cl.[{claim_recv_fk}]
-            GROUP BY r.[{recv_name}]
+            JOIN claims_data cl ON r.Receiver_ID = cl.Receiver_ID
+            GROUP BY r.Name
             ORDER BY Total_Claims_Made DESC;
         """,
-        "Query 14: Find the specific location hubs where food is stored for 'Pending' claims": f"""
-            SELECT f.[{food_item}] AS Food_Name, f.[{food_loc}] AS Storage_Location, cl.[{claim_status}] AS Claim_Status
+        "Query 14: Find the specific location hubs where food is stored for 'Pending' claims": """
+            SELECT f.Food_Name, f.Location AS Storage_Location, cl.Status AS Claim_Status
             FROM food_listings_data f
-            JOIN claims_data cl ON f.[{food_id}] = cl.[{claim_food_fk}]
-            WHERE LOWER(cl.[{claim_status}]) LIKE '%pending%' OR cl.[{claim_status}] IS NOT NULL;
+            JOIN claims_data cl ON f.Food_ID = cl.Food_ID
+            WHERE LOWER(cl.Status) LIKE '%pending%' OR cl.Status IS NOT NULL;
         """,
-        "Query 15: Find the breakdown of food types involved in claims": f"""
-            SELECT f.[{food_type}] AS Food_Type, COUNT(cl.[{claim_id}]) AS Total_Claims_Involved
+        "Query 15: Find the breakdown of food types involved in claims": """
+            SELECT f.Food_Type, COUNT(cl.Claim_ID) AS Total_Claims_Involved
             FROM food_listings_data f
-            JOIN claims_data cl ON f.[{food_id}] = cl.[{claim_food_fk}]
-            WHERE f.[{food_type}] IS NOT NULL AND f.[{food_type}] != ''
-            GROUP BY f.[{food_type}];
+            JOIN claims_data cl ON f.Food_ID = cl.Food_ID
+            WHERE f.Food_Type IS NOT NULL AND f.Food_Type != ''
+            GROUP BY f.Food_Type;
         """
     }
     
