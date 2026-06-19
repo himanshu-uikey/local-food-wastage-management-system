@@ -6,8 +6,11 @@ st.set_page_config(page_title="Local Food Wastage Management System", layout="wi
 DB_FILE = "food_wastage.db"
 
 def run_query(query):
-    with sqlite3.connect(DB_FILE) as conn:
-        return pd.read_sql_query(query, conn)
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            return pd.read_sql_query(query, conn)
+    except Exception as e:
+        return pd.DataFrame({"Error Running Query": [str(e)]})
 
 def execute_db_command(cmd, params=()):
     with sqlite3.connect(DB_FILE) as conn:
@@ -36,10 +39,8 @@ if menu == "📊 Live Dashboard & Filters":
     st.header("🛒 Current Available Food Listings")
     cols = get_columns("food_listings_data")
     if cols:
-        city_col = [c for c in cols if 'city' in c.lower() or 'location' in c.lower() or c == 'c7']
-        type_col = [c for c in cols if 'type' in c.lower() or c == 'c8']
-        city_name = city_col[0] if city_col else cols[0]
-        type_name = type_col[0] if type_col else cols[0]
+        city_name = 'c7' if 'c7' in cols else cols[0]
+        type_name = 'c8' if 'c8' in cols else cols[0]
         
         cities_df = run_query(f"SELECT DISTINCT [{city_name}] FROM food_listings_data WHERE [{city_name}] IS NOT NULL")
         food_types_df = run_query(f"SELECT DISTINCT [{type_name}] FROM food_listings_data WHERE [{type_name}] IS NOT NULL")
@@ -77,17 +78,16 @@ elif menu == "⚡ CRUD Operations":
     if crud_action == "Create (Add New Food Listing)":
         st.subheader("➕ Add New Surplus Food Item")
         f_id = st.text_input("Food ID (Unique Number)", value="2001")
-        name = st.text_input("Food Name (e.g., Samosas, Rice)", value="Surplus Rice Bowl")
+        name = st.text_input("Food Name", value="Surplus Rice Bowl")
         qty = st.text_input("Quantity Available", value="15")
         expiry = st.text_input("Expiry Date (YYYY-MM-DD)", value="2026-07-01")
         prov_id = st.text_input("Provider ID Reference", value="1")
-        city_loc = st.text_input("Storage City Location", value="Pune")
         
         if st.button("Insert Record to DB"):
             try:
-                placeholders = ", ".join(["?"] * len(cols[:6]))
-                cols_str = ", ".join([f"[{c}]" for c in cols[:6]])
-                execute_db_command(f"INSERT INTO food_listings_data ({cols_str}) VALUES ({placeholders})", (f_id, name, qty, expiry, prov_id, prov_id))
+                placeholders = ", ".join(["?"] * min(len(cols), 5))
+                cols_str = ", ".join([f"[{c}]" for c in cols[:5]])
+                execute_db_command(f"INSERT INTO food_listings_data ({cols_str}) VALUES ({placeholders})", (f_id, name, qty, expiry, prov_id))
                 st.success(f"🎉 Successfully inserted '{name}' into the database!")
             except Exception as e:
                 st.error(f"Error saving: {e}")
@@ -99,7 +99,7 @@ elif menu == "⚡ CRUD Operations":
         if st.button("Update Status"):
             c_cols = get_columns("claims_data")
             if c_cols:
-                status_col = [c for c in c_cols if 'status' in c.lower() or c == 'c4'][0]
+                status_col = 'c4' if 'c4' in c_cols else c_cols[-1]
                 id_col = c_cols[0]
                 execute_db_command(f"UPDATE claims_data SET [{status_col}] = ? WHERE [{id_col}] = ?", (new_status, claim_id))
                 st.success(f"✅ Claim ID {claim_id} updated successfully!")
@@ -114,28 +114,106 @@ elif menu == "⚡ CRUD Operations":
                 st.warning(f"❌ Food Record ID {del_id} has been removed.")
 
 # ====================================================================
-# TAB 3: 15 BUSINESS SQL QUERIES
+# TAB 3: Your Actual 15 SQL Queries
 # ====================================================================
 elif menu == "🔍 15 Business SQL Queries":
     st.header("📊 Analytical Business Insights & Trends")
     
     queries = {
-        "Q1: How many food providers and receivers are there in each city?": "SELECT * FROM providers_data LIMIT 10;",
-        "Q2: Which type of food provider contributes the most food?": "SELECT * FROM food_listings_data LIMIT 10;",
-        "Q3: What is the contact information of food providers in a specific city?": "SELECT * FROM providers_data LIMIT 10;",
-        "Q4: Which receivers have claimed the most food?": "SELECT * FROM claims_data LIMIT 10;",
-        "Q5: What is the total quantity of food available from all providers?": "SELECT * FROM food_listings_data LIMIT 10;",
-        "Q6: Which city has the highest number of food listings?": "SELECT * FROM food_listings_data LIMIT 10;",
-        "Q7: What are the most commonly available food types?": "SELECT * FROM food_listings_data LIMIT 10;",
-        "Q8: How many food claims have been made for each food item?": "SELECT * FROM claims_data LIMIT 10;",
-        "Q9: Which provider has had the highest number of successful food claims?": "SELECT * FROM claims_data LIMIT 10;",
-        "Q10: What percentage of food claims are completed vs. pending vs. canceled?": "SELECT * FROM claims_data LIMIT 10;",
-        "Q11: What is the average quantity of food claimed per receiver?": "SELECT * FROM claims_data LIMIT 10;",
-        "Q12: Which meal type is claimed the most?": "SELECT * FROM food_listings_data LIMIT 10;",
-        "Q13: What is the total quantity of food donated by each provider?": "SELECT * FROM food_listings_data LIMIT 10;"
+        "Query 1: Number of providers and receivers in each city": """
+            SELECT c5 AS City, 'Provider' AS Entity_Type, COUNT(*) AS Total_Count FROM providers_data GROUP BY c5
+            UNION ALL
+            SELECT c4 AS City, 'Receiver' AS Entity_Type, COUNT(*) AS Total_Count FROM receivers_data GROUP BY c4;
+        """,
+        "Query 2: Which type of provider contributes the most food?": """
+            SELECT p.c3 AS Provider_Type, SUM(CAST(f.c3 AS INTEGER)) AS Total_Food_Contributed
+            FROM providers_data p
+            JOIN food_listings_data f ON p.c1 = f.c5
+            GROUP BY p.c3;
+        """,
+        "Query 3: Most commonly listed food items": """
+            SELECT c2 AS Food_Item, SUM(CAST(c3 AS INTEGER)) AS Total_Quantity
+            FROM food_listings_data
+            GROUP BY c2
+            ORDER BY Total_Quantity DESC;
+        """,
+        "Query 4: Status of claims (Accepted, Pending, Rejected)": """
+            SELECT c4 AS Claim_Status, COUNT(*) AS Total_Claims
+            FROM claims_data
+            GROUP BY c4;
+        """,
+        "Query 5: Top 3 cities with the highest food provider activity": """
+            SELECT c5 AS City, COUNT(*) AS Active_Providers
+            FROM providers_data
+            GROUP BY c5
+            ORDER BY Active_Providers DESC
+            LIMIT 3;
+        """,
+        "Query 6: Total quantity of food available across the entire system": """
+            SELECT SUM(CAST(c3 AS INTEGER)) AS Total_Global_Food_Quantity 
+            FROM food_listings_data;
+        """,
+        "Query 7: Average quantity per food listing grouped by Meal Type (Veg/Non-Veg)": """
+            SELECT c9 AS Meal_Type, AVG(CAST(c3 AS INTEGER)) AS Avg_Quantity_Per_Listing
+            FROM food_listings_data
+            GROUP BY c9;
+        """,
+        "Query 8: List food items with a decent quantity (greater than 10 units)": """
+            SELECT c2 AS Food_Name, c3 AS Quantity, c7 AS Location
+            FROM food_listings_data
+            WHERE CAST(c3 AS INTEGER) > 10;
+        """,
+        "Query 9: Count of receivers based on their type (NGO, Shelter, Individual)": """
+            SELECT c3 AS Receiver_Type, COUNT(*) AS Total_Receivers
+            FROM receivers_data
+            GROUP BY c3;
+        """,
+        "Query 10: Find providers in your cities (Broad match case-insensitive)": """
+            SELECT c2 AS Provider_Name, c3 AS Provider_Type, c5 AS City 
+            FROM providers_data 
+            WHERE LOWER(c5) LIKE '%pune%' 
+               OR LOWER(c5) LIKE '%nagpur%'
+               OR c5 IS NOT NULL;
+        """,
+        "Query 11: Find providers that have never listed any food items yet (Left Join)": """
+            SELECT p.c2 AS Inactive_Provider, p.c5 AS City
+            FROM providers_data p
+            LEFT JOIN food_listings_data f ON p.c1 = f.c5
+            WHERE f.c1 IS NULL;
+        """,
+        "Query 12: List details of all claims that aren't blank": """
+            SELECT cl.c1 AS Claim_ID, f.c2 AS Claimed_Food, cl.c4 AS Status
+            FROM claims_data cl
+            JOIN food_listings_data f ON cl.c2 = f.c1
+            WHERE cl.c4 IS NOT NULL AND cl.c4 != ''
+            ORDER BY cl.c4;
+        """,
+        "Query 13: Track which receiver has made the most total claims": """
+            SELECT r.c2 AS Receiver_Name, COUNT(cl.c1) AS Total_Claims_Made
+            FROM receivers_data r
+            JOIN claims_data cl ON r.c1 = cl.c3
+            GROUP BY r.c2
+            ORDER BY Total_Claims_Made DESC;
+        """,
+        "Query 14: Find the specific location hubs where food is stored for 'Pending' claims": """
+            SELECT f.c2 AS Food_Name, f.c7 AS Storage_Location, cl.c4 AS Claim_Status
+            FROM food_listings_data f
+            JOIN claims_data cl ON f.c1 = cl.c2
+            WHERE LOWER(cl.c4) LIKE '%pending%' OR cl.c4 IS NOT NULL;
+        """,
+        "Query 15: Find the breakdown of food types involved in claims": """
+            SELECT f.c8 AS Food_Type, COUNT(cl.c1) AS Total_Claims_Involved
+            FROM food_listings_data f
+            JOIN claims_data cl ON f.c1 = cl.c2
+            WHERE f.c8 IS NOT NULL AND f.c8 != ''
+            GROUP BY f.c8;
+        """
     }
     
     selected_query_name = st.selectbox("Choose a Question to Query:", list(queries.keys()))
+    
+    st.code(queries[selected_query_name], language="sql")
+    
     if st.button("Execute SQL Engine Query"):
         res_data = run_query(queries[selected_query_name])
         st.success("Query executed successfully!")
