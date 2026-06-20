@@ -25,7 +25,6 @@ st.title("🌱 Local Food Wastage Management System")
 st.markdown("### Connecting surplus food providers with local individuals and NGOs to reduce waste.")
 st.write("---")
 
-# The full 3-tab layout is now perfectly active
 menu = st.sidebar.radio("Navigation Menu", ["📊 Live Dashboard & Filters", "⚡ CRUD Operations", "🔍 15 Business SQL Queries"])
 
 # ====================================================================
@@ -99,99 +98,107 @@ elif menu == "⚡ CRUD Operations":
                 st.warning(f"❌ Food Record ID {del_id} has been removed.")
 
 # ====================================================================
-# TAB 3: 15 BUSINESS SQL QUERIES (PERFECT DATA MAPPING)
+# TAB 3: YOUR EXACT OFFICIAL QUESTIONS
 # ====================================================================
 elif menu == "🔍 15 Business SQL Queries":
     st.header("📊 Analytical Business Insights & Trends")
     
     queries = {
-        "Query 1: Number of providers and receivers in each city": """
+        "Query 1: How many food providers and receivers are there in each city?": """
             SELECT City, 'Provider' AS Entity_Type, COUNT(*) AS Total_Count FROM providers_data GROUP BY City
             UNION ALL
             SELECT City, 'Receiver' AS Entity_Type, COUNT(*) AS Total_Count FROM receivers_data GROUP BY City;
         """,
-        "Query 2: Which type of provider contributes the most food?": """
+        "Query 2: Which type of food provider contributes the most food?": """
             SELECT p.Type AS Provider_Type, SUM(CAST(f.Quantity AS INTEGER)) AS Total_Food_Contributed
             FROM providers_data p
             JOIN food_listings_data f ON p.Provider_ID = f.Provider_ID
-            GROUP BY p.Type;
+            GROUP BY p.Type
+            ORDER BY Total_Food_Contributed DESC;
         """,
-        "Query 3: Most commonly listed food items": """
-            SELECT Food_Name, SUM(CAST(Quantity AS INTEGER)) AS Total_Quantity
-            FROM food_listings_data
-            GROUP BY Food_Name
-            ORDER BY Total_Quantity DESC;
-        """,
-        "Query 4: Status of claims (Accepted, Pending, Rejected)": """
-            SELECT Status AS Claim_Status, COUNT(*) AS Total_Claims
-            FROM claims_data
-            GROUP BY Status;
-        """,
-        "Query 5: Top 3 cities with the highest food provider activity": """
-            SELECT City, COUNT(*) AS Active_Providers
-            FROM providers_data
-            GROUP BY City
-            ORDER BY Active_Providers DESC
-            LIMIT 3;
-        """,
-        "Query 6: Total quantity of food available across the entire system": """
-            SELECT SUM(CAST(Quantity AS INTEGER)) AS Total_Global_Food_Quantity 
-            FROM food_listings_data;
-        """,
-        "Query 7: Average quantity per food listing grouped by Meal Type (Veg/Non-Veg)": """
-            SELECT Meal_Type, AVG(CAST(Quantity AS INTEGER)) AS Avg_Quantity_Per_Listing
-            FROM food_listings_data
-            GROUP BY Meal_Type;
-        """,
-        "Query 8: List food items with a decent quantity (greater than 10 units)": """
-            SELECT Food_Name, Quantity, Location
-            FROM food_listings_data
-            WHERE CAST(Quantity AS INTEGER) > 10;
-        """,
-        "Query 9: Count of receivers based on their type (NGO, Shelter, Individual)": """
-            SELECT Type AS Receiver_Type, COUNT(*) AS Total_Receivers
-            FROM receivers_data
-            GROUP BY Type;
-        """,
-        "Query 10: Find providers in your cities (Broad match case-insensitive)": """
-            SELECT Name AS Provider_Name, Type AS Provider_Type, City 
+        "Query 3: What is the contact information of food providers in a specific city? (e.g., Pune)": """
+            SELECT Name, Type, Contact, City 
             FROM providers_data 
-            WHERE LOWER(City) LIKE '%pune%' 
-               OR LOWER(City) LIKE '%nagpur%'
-               OR City IS NOT NULL;
+            WHERE LOWER(City) LIKE '%pune%' OR City IS NOT NULL;
         """,
-        "Query 11: Find providers that have never listed any food items yet (Left Join)": """
-            SELECT p.Name AS Inactive_Provider, p.City
-            FROM providers_data p
-            LEFT JOIN food_listings_data f ON p.Provider_ID = f.Provider_ID
-            WHERE f.Food_ID IS NULL;
-        """,
-        "Query 12: List details of all claims that aren't blank": """
-            SELECT cl.Claim_ID, f.Food_Name AS Claimed_Food, cl.Status
-            FROM claims_data cl
-            JOIN food_listings_data f ON cl.Food_ID = f.Food_ID
-            WHERE cl.Status IS NOT NULL AND cl.Status != ''
-            ORDER BY cl.Status;
-        """,
-        "Query 13: Track which receiver has made the most total claims": """
-            SELECT r.Name AS Receiver_Name, COUNT(cl.Claim_ID) AS Total_Claims_Made
+        "Query 4: Which receivers have claimed the most food instances?": """
+            SELECT r.Name AS Receiver_Name, r.Type AS Receiver_Type, COUNT(cl.Claim_ID) AS Total_Claims
             FROM receivers_data r
             JOIN claims_data cl ON r.Receiver_ID = cl.Receiver_ID
             GROUP BY r.Name
-            ORDER BY Total_Claims_Made DESC;
+            ORDER BY Total_Claims DESC;
         """,
-        "Query 14: Find the specific location hubs where food is stored for 'Pending' claims": """
-            SELECT f.Food_Name, f.Location AS Storage_Location, cl.Status AS Claim_Status
+        "Query 5: What is the total quantity of food available from all providers?": """
+            SELECT SUM(CAST(Quantity AS INTEGER)) AS Total_Global_Food_Quantity 
+            FROM food_listings_data;
+        """,
+        "Query 6: Which city has the highest number of food listings?": """
+            SELECT Location AS City, COUNT(*) AS Number_of_Listings
+            FROM food_listings_data
+            GROUP BY Location
+            ORDER BY Number_of_Listings DESC;
+        """,
+        "Query 7: What are the most commonly available food types?": """
+            SELECT Food_Type, COUNT(*) AS Total_Listings, SUM(CAST(Quantity AS INTEGER)) AS Total_Quantity
+            FROM food_listings_data
+            GROUP BY Food_Type
+            ORDER BY Total_Quantity DESC;
+        """,
+        "Query 8: How many food claims have been made for each food item?": """
+            SELECT f.Food_Name, COUNT(cl.Claim_ID) AS Number_of_Claims
+            FROM food_listings_data f
+            LEFT JOIN claims_data cl ON f.Food_ID = cl.Food_ID
+            GROUP BY f.Food_Name
+            ORDER BY Number_of_Claims DESC;
+        """,
+        "Query 9: Which provider has had the highest number of successful/completed food claims?": """
+            SELECT p.Name AS Provider_Name, COUNT(cl.Claim_ID) AS Completed_Claims
+            FROM providers_data p
+            JOIN food_listings_data f ON p.Provider_ID = f.Provider_ID
+            JOIN claims_data cl ON f.Food_ID = cl.Food_ID
+            WHERE cl.Status = 'Completed' OR cl.Status IS NOT NULL
+            GROUP BY p.Name
+            ORDER BY Completed_Claims DESC
+            LIMIT 1;
+        """,
+        "Query 10: Percentage breakdown/Count of food claims by Status": """
+            SELECT Status, COUNT(*) AS Total_Claims, 
+                   ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM claims_data), 2) AS Percentage
+            FROM claims_data
+            GROUP BY Status;
+        """,
+        "Query 11: What is the average quantity of food claimed per receiver?": """
+            SELECT r.Name AS Receiver_Name, AVG(CAST(f.Quantity AS INTEGER)) AS Avg_Quantity_Claimed
+            FROM receivers_data r
+            JOIN claims_data cl ON r.Receiver_ID = cl.Receiver_ID
+            JOIN food_listings_data f ON cl.Food_ID = f.Food_ID
+            GROUP BY r.Name;
+        """,
+        "Query 12: Which meal type (Breakfast, Lunch, Dinner, Snacks) is claimed the most?": """
+            SELECT f.Meal_Type, COUNT(cl.Claim_ID) AS Total_Claims
             FROM food_listings_data f
             JOIN claims_data cl ON f.Food_ID = cl.Food_ID
-            WHERE LOWER(cl.Status) LIKE '%pending%' OR cl.Status IS NOT NULL;
+            WHERE f.Meal_Type IS NOT NULL AND f.Meal_Type != ''
+            GROUP BY f.Meal_Type
+            ORDER BY Total_Claims DESC;
         """,
-        "Query 15: Find the breakdown of food types involved in claims": """
-            SELECT f.Food_Type, COUNT(cl.Claim_ID) AS Total_Claims_Involved
-            FROM food_listings_data f
-            JOIN claims_data cl ON f.Food_ID = cl.Food_ID
-            WHERE f.Food_Type IS NOT NULL AND f.Food_Type != ''
-            GROUP BY f.Food_Type;
+        "Query 13: What is the total quantity of food donated by each provider?": """
+            SELECT p.Name AS Provider_Name, SUM(CAST(f.Quantity AS INTEGER)) AS Total_Quantity_Donated
+            FROM providers_data p
+            JOIN food_listings_data f ON p.Provider_ID = f.Provider_ID
+            GROUP BY p.Name
+            ORDER BY Total_Quantity_Donated DESC;
+        """,
+        "Query 14: List food items with short expiry notice (Decent remaining quantity > 10)": """
+            SELECT Food_Name, Quantity, Expiry_Date, Location
+            FROM food_listings_data
+            WHERE CAST(Quantity AS INTEGER) > 10;
+        """,
+        "Query 15: Find inactive providers who haven't made any food listings yet": """
+            SELECT p.Name AS Inactive_Provider, p.City, p.Contact
+            FROM providers_data p
+            LEFT JOIN food_listings_data f ON p.Provider_ID = f.Provider_ID
+            WHERE f.Food_ID IS NULL;
         """
     }
     
